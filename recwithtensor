@@ -1,0 +1,65 @@
+import cv2
+import numpy as np
+from tensorflow.keras.models import load_model
+from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
+
+# Constants
+MODEL_PATH = 'C:/Users/Hp/Downloads/masked_face_recognizer.h5'
+LABELS_PATH = 'C:/Users/Hp/Downloads/masked_face_labels.npy'
+CASCADE_PATH = 'C:/Users/Hp/Downloads/lbpcascade_frontalface_improved.xml'
+IMG_SIZE = (224, 224)
+
+# Load the model and labels
+model = load_model(MODEL_PATH)
+label_dict = np.load(LABELS_PATH, allow_pickle=True).item()
+
+# Load the face cascade
+face_cascade = cv2.CascadeClassifier(CASCADE_PATH)
+
+# Function to preprocess the face for the model
+def preprocess_face(face):
+    face = cv2.resize(face, IMG_SIZE)
+    face = cv2.cvtColor(face, cv2.COLOR_BGR2RGB)
+    face = preprocess_input(face)
+    return np.expand_dims(face, axis=0)
+
+# Open the webcam
+cap = cv2.VideoCapture(0)
+
+while True:
+    ret, frame = cap.read()
+    if not ret:
+        print("Failed to capture frame")
+        break
+
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+
+    for (x, y, w, h) in faces:
+        face = frame[y:y+h, x:x+w]
+        processed_face = preprocess_face(face)
+        
+        # Predict the face
+        predictions = model.predict(processed_face)
+        label_id = np.argmax(predictions)
+        confidence = np.max(predictions)
+        
+        # Get the name and draw the boundary box
+        name = label_dict.get(label_id, "Unknown")
+        color = (0, 255, 0) if confidence > 0.5 else (0, 0, 255)
+        cv2.rectangle(frame, (x, y), (x+w, y+h), color, 2)
+        
+        # Put the name and confidence
+        label = f"{name} ({confidence:.2f})"
+        cv2.putText(frame, label, (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, color, 2)
+
+    # Display the result
+    cv2.imshow('Face Recognition', frame)
+
+    # Break the loop when 'q' is pressed
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+# Release the capture and close windows
+cap.release()
+cv2.destroyAllWindows()
